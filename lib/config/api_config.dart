@@ -1,7 +1,6 @@
 library api_config;
 
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 
 /// Google AI Studio Free-Tier API Configuration & Model Registry
 /// Base URL: https://generativelanguage.googleapis.com/v1beta
@@ -56,13 +55,13 @@ class ApiConfig {
   static const String clerkApplicationId = 'app_3MFQeKduTlDlvScWQinKnELN9cx';
 
   // Production Render URL default
-  static const String productionBackendUrl = 'https://nutriscan-backend.onrender.com/api/v1';
+  static const String productionBackendUrl = 'https://nutriscan-backend-3sl6.onrender.com/api/v1';
 
   // Backend API Configuration (Node + Express + Supabase + Clerk)
-  // Defaults to production Render HTTPS URL in release mode, and Android emulator host in debug mode.
+  // Connects directly to deployed live Render HTTPS backend by default.
   static const String defaultBackendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: kReleaseMode ? productionBackendUrl : 'http://10.0.2.2:4000/api/v1',
+    defaultValue: productionBackendUrl,
   );
   static String backendBaseUrl = defaultBackendUrl;
 
