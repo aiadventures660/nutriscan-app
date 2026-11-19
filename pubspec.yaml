@@ -1,0 +1,81 @@
+name: nutriscan
+description: Nutriscan Pro - A Flutter app for scanning food and getting nutrition insights using AI.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Camera and Image Processing
+  camera: ^0.10.5+9
+  image_picker: ^1.0.7
+  image: ^4.1.7
+  
+  # Storage and Preferences
+  shared_preferences: ^2.2.2
+  path_provider: ^2.1.2
+  
+  # AI and HTTP
+  google_generative_ai: ^0.4.3
+  http: ^1.2.0
+  
+  # UI and Navigation
+  provider: ^6.1.1
+  go_router: ^13.2.0
+  
+  # Charts and Animations
+  fl_chart: ^0.66.2
+  lottie: ^3.1.0
+  
+  # Utilities
+  intl: ^0.20.2
+  url_launcher: ^6.2.4
+  cached_network_image: ^3.4.1
+
+  # Premium UI Enhancement Packages
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  smooth_page_indicator: ^1.1.0
+  gap: ^3.0.1
+  flutter_svg: ^2.0.17
+  http_parser: ^4.0.2
+  clerk_auth: 0.0.18-beta
+  clerk_flutter: ^0.0.18-beta
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+    - assets/icons/app_icon.png
+    - assets/images/app_logo.png
+
+# App launcher icons configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/app_icon.png"
+  min_sdk_android: 21 # android min sdk min:16, default 21
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    background_color: "#hexcode"
+    theme_color: "#hexcode"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
