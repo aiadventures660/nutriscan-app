@@ -151,6 +151,14 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
     if (error is clerk.ApiResponse) {
       return error.errorCollection.errorMessage;
     }
+    try {
+      final msg = (error as dynamic).errorMessage;
+      if (msg is String && msg.isNotEmpty) return msg;
+    } catch (_) {}
+    try {
+      final msg = (error as dynamic).fullMessage;
+      if (msg is String && msg.isNotEmpty) return msg;
+    } catch (_) {}
     if (error is clerk.ClerkError) {
       if (error.argument != null && error.argument!.trim().isNotEmpty) {
         return error.argument!;
