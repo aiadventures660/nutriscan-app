@@ -32,11 +32,13 @@ class GeminiModelInfo {
 
 class ApiConfig {
   // Base endpoint for Google Generative Language API
-  static const String baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+  static const String baseUrl =
+      'https://generativelanguage.googleapis.com/v1beta';
   static const String freeTierKeyUrl = 'https://aistudio.google.com/app/apikey';
 
   // Environment-injected API key (--dart-define=GEMINI_API_KEY=...)
-  static const String _envApiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+  static const String _envApiKey =
+      String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
 
   /// Resolves the API key supplied at build time or runtime.
   static String get defaultApiKey {
@@ -50,12 +52,14 @@ class ApiConfig {
   // Clerk Authentication Configuration
   static const String clerkPublishableKey = String.fromEnvironment(
     'CLERK_PUBLISHABLE_KEY',
-    defaultValue: 'pk_test_YnVyc3Rpbmctc3RvcmstODM5Mi5jbGVyay5hY2NvdW50cy5kZXYk',
+    defaultValue:
+        'pk_test_YnVyc3Rpbmctc3RvcmstODM5Mi5jbGVyay5hY2NvdW50cy5kZXYk',
   );
   static const String clerkApplicationId = 'app_3MFQeKduTlDlvScWQinKnELN9cx';
 
   // Production Render URL default
-  static const String productionBackendUrl = 'https://nutriscan-backend-3sl6.onrender.com/api/v1';
+  static const String productionBackendUrl =
+      'https://nutriscan-backend-3sl6.onrender.com/api/v1';
 
   // Backend API Configuration (Node + Express + Supabase + Clerk)
   // Connects directly to deployed live Render HTTPS backend by default.
@@ -94,7 +98,8 @@ class ApiConfig {
       maxOutput: '65K',
       modality: 'Text + Image + Audio + Video',
       badgeText: 'Ultra-Fast Vision',
-      description: 'Ultra-rapid multimodal inference optimized for sub-second food recognition.',
+      description:
+          'Ultra-rapid multimodal inference optimized for sub-second food recognition.',
     ),
     GeminiModelInfo(
       id: 'gemini-3.5-flash-lite',
@@ -104,7 +109,8 @@ class ApiConfig {
       maxOutput: '65K',
       modality: 'Text + Image + Audio + Video',
       badgeText: 'Ultra-Low Latency',
-      description: 'High efficiency multimodal model recommended by Google for fast interactive food coaching.',
+      description:
+          'High efficiency multimodal model recommended by Google for fast interactive food coaching.',
     ),
     GeminiModelInfo(
       id: 'gemini-3.1-flash-lite',
@@ -114,7 +120,8 @@ class ApiConfig {
       maxOutput: '65K',
       modality: 'Text + Image + Audio + Video',
       badgeText: 'Lightweight & Rapid',
-      description: 'Compact high-efficiency multimodal model with full 1M context support.',
+      description:
+          'Compact high-efficiency multimodal model with full 1M context support.',
     ),
     GeminiModelInfo(
       id: 'gemini-3.8-flash',
@@ -124,7 +131,8 @@ class ApiConfig {
       maxOutput: '65K',
       modality: 'Text + Image + Audio + Video',
       badgeText: 'Flagship Speed',
-      description: 'Next-gen flagship multimodal reasoning with ultra-fast inference and 1M context window.',
+      description:
+          'Next-gen flagship multimodal reasoning with ultra-fast inference and 1M context window.',
     ),
     GeminiModelInfo(
       id: 'gemini-3.6-flash',
@@ -134,7 +142,8 @@ class ApiConfig {
       maxOutput: '65K',
       modality: 'Text + Image + Audio + Video',
       badgeText: 'High Performance',
-      description: 'Advanced food vision, macro calculation, NOVA processing, and food additive analysis.',
+      description:
+          'Advanced food vision, macro calculation, NOVA processing, and food additive analysis.',
     ),
     GeminiModelInfo(
       id: 'gemini-flash-latest',
@@ -194,7 +203,8 @@ class ApiConfig {
   /// Strips and redacts any API keys from URLs, stack traces, and logs
   static String sanitizeLog(String log) {
     return log
-        .replaceAll(RegExp(r'key=[^&\s"''>]+', caseSensitive: false), 'key=[REDACTED]')
+        .replaceAll(
+            RegExp(r'key=[^&\s"' '>]+', caseSensitive: false), 'key=[REDACTED]')
         .replaceAll(RegExp(r'AQ\.[A-Za-z0-9_-]{20,}'), '[REDACTED_KEY]')
         .replaceAll(RegExp(r'AIzaSy[A-Za-z0-9_-]{20,}'), '[REDACTED_KEY]');
   }
