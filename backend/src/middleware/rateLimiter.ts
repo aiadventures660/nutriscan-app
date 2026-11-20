@@ -16,6 +16,7 @@ export const generalRateLimiter = rateLimit({
 export const aiRateLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.AI_RATE_LIMIT_MAX_REQUESTS,
+  keyGenerator: (req: any) => req.user?.id || req.ip || 'anonymous',
   standardHeaders: true,
   legacyHeaders: false,
   message: {

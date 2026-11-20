@@ -114,6 +114,21 @@ async function runIsolationTests() {
     assert.strictEqual(exportA.meals.length, 1);
     assert.strictEqual(exportA.meals[0].name, 'User A Avocado Toast');
 
+    // 9. Verify Storage Path IDOR Prevention
+    console.log('9. Verifying storage path cross-tenant access prevention...');
+    const { storageService } = await import('../services/storage.service.js');
+    const crossPathSignedUrl = await storageService.getSignedUrl(
+      `${profileB.id}/secret_photo.jpg`,
+      3600,
+      profileA.id // Expected User A, but path belongs to User B
+    );
+    assert.strictEqual(
+      crossPathSignedUrl,
+      null,
+      'Storage signed URL must be rejected when path belongs to another user'
+    );
+    console.log('✓ Storage path cross-tenant access prevention confirmed');
+
     // Delete User A account
     await db.deleteUserAccount(profileA.id);
 
@@ -131,7 +146,7 @@ async function runIsolationTests() {
     await db.deleteUserAccount(profileB.id);
 
     console.log('\n======================================================');
-    console.log('ALL 8 USER ISOLATION & MULTI-TENANCY CHECKS PASSED!');
+    console.log('ALL 9 USER ISOLATION & MULTI-TENANCY CHECKS PASSED!');
     console.log('======================================================\n');
     process.exit(0);
   } catch (e) {

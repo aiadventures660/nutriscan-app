@@ -72,7 +72,7 @@ export class MealsController {
       .map((m) => m.storagePath)
       .filter((p): p is string => Boolean(p && !p.startsWith('local:')));
     if (pathsToSign.length > 0) {
-      const signedMap = await storageService.getSignedUrls(pathsToSign, 3600);
+      const signedMap = await storageService.getSignedUrls(pathsToSign, 3600, userId);
       for (const m of result.meals) {
         if (m.storagePath && signedMap.has(m.storagePath)) {
           m.imageUrl = signedMap.get(m.storagePath);
@@ -104,7 +104,7 @@ export class MealsController {
 
     // Refresh short-lived signed URL for private food image storage
     if (meal.storagePath && !meal.storagePath.startsWith('local:')) {
-      const signedUrl = await storageService.getSignedUrl(meal.storagePath, 3600);
+      const signedUrl = await storageService.getSignedUrl(meal.storagePath, 3600, userId);
       if (signedUrl) {
         meal.imageUrl = signedUrl;
       }
@@ -116,6 +116,15 @@ export class MealsController {
   async createMeal(req: AuthenticatedRequest, res: Response): Promise<void> {
     const userId = req.user!.id;
     const validated = createMealSchema.parse(req.body);
+
+    // Defense-in-depth: Prevent cross-user storagePath hijacking (IDOR)
+    if (
+      validated.storagePath &&
+      !validated.storagePath.startsWith(`${userId}/`) &&
+      !validated.storagePath.startsWith(`local:${userId}/`)
+    ) {
+      validated.storagePath = null;
+    }
 
     const meal = await db.createMeal(userId, validated);
     res.status(201).json({
@@ -129,6 +138,15 @@ export class MealsController {
     const userId = req.user!.id;
     const mealId = String(req.params.id);
     const validated = updateMealSchema.parse(req.body);
+
+    // Defense-in-depth: Prevent cross-user storagePath hijacking (IDOR)
+    if (
+      validated.storagePath &&
+      !validated.storagePath.startsWith(`${userId}/`) &&
+      !validated.storagePath.startsWith(`local:${userId}/`)
+    ) {
+      validated.storagePath = null;
+    }
 
     const updated = await db.updateMeal(userId, mealId, validated);
     if (!updated) {

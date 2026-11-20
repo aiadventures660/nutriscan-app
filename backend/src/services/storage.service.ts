@@ -139,9 +139,22 @@ export class StorageService {
 
   /**
    * Generate short-lived signed URL for a single storage path
+   * Validates user ownership when expectedUserId is provided
    */
-  async getSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string | null> {
+  async getSignedUrl(
+    storagePath: string,
+    expiresIn: number = 3600,
+    expectedUserId?: string
+  ): Promise<string | null> {
     if (!isSupabaseConfigured() || !storagePath || storagePath.startsWith('local:')) {
+      return null;
+    }
+    // Defense-in-depth: Prevent cross-user storage path access
+    if (expectedUserId && !storagePath.startsWith(`${expectedUserId}/`)) {
+      logger.warn('Storage signed URL generation rejected: path does not match expected user', {
+        storagePath,
+        expectedUserId,
+      });
       return null;
     }
     try {
@@ -159,14 +172,27 @@ export class StorageService {
 
   /**
    * Batch generate short-lived signed URLs for multiple storage paths
+   * Validates user ownership when expectedUserId is provided
    */
-  async getSignedUrls(storagePaths: string[], expiresIn: number = 3600): Promise<Map<string, string>> {
+  async getSignedUrls(
+    storagePaths: string[],
+    expiresIn: number = 3600,
+    expectedUserId?: string
+  ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     if (!isSupabaseConfigured() || storagePaths.length === 0) {
       return map;
     }
     try {
-      const validPaths = Array.from(new Set(storagePaths.filter((p) => p && !p.startsWith('local:'))));
+      const validPaths = Array.from(
+        new Set(
+          storagePaths.filter((p) => {
+            if (!p || p.startsWith('local:')) return false;
+            if (expectedUserId && !p.startsWith(`${expectedUserId}/`)) return false;
+            return true;
+          })
+        )
+      );
       if (validPaths.length === 0) return map;
 
       const { data, error } = await getSupabase().storage

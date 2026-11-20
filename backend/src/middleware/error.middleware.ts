@@ -46,9 +46,13 @@ export function errorHandler(
   }
 
   const statusCode = err.status || err.statusCode || 500;
+  const isProduction = process.env.NODE_ENV === 'production';
   res.status(statusCode).json({
     success: false,
     error: err.name || 'Internal Server Error',
-    message: err.message || 'An unexpected error occurred processing your request.',
+    message:
+      statusCode >= 500 && isProduction
+        ? 'An unexpected error occurred processing your request.'
+        : err.message || 'An unexpected error occurred processing your request.',
   });
 }

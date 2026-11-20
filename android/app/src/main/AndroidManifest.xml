@@ -47,6 +47,8 @@
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:supportsRtl="true"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:theme="@style/LaunchTheme">
         
         <!-- Main Activity with comprehensive configuration -->
