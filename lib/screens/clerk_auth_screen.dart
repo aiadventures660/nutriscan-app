@@ -280,6 +280,7 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         final signIn = authState.client.signIn;
         if (signIn != null && signIn.status.needsFactor) {
           // Prepare and send the factor code to user email
+          bool prepSuccess = false;
           try {
             final availableFactors = signIn.needsSecondFactor
                 ? signIn.supportedSecondFactors
@@ -292,10 +293,13 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
                     ? availableFactors.first.strategy
                     : clerk.Strategy.emailCode);
             await authState.attemptSignIn(strategy: strategyToPrepare);
+            prepSuccess = true;
           } catch (prepErr) {
-            debugPrint('Notice while preparing emailCode signin: $prepErr');
+            debugPrint('Error while preparing emailCode signin: $prepErr');
+            _showError(_parseClerkError(prepErr));
+            return;
           }
-          if (mounted) {
+          if (mounted && prepSuccess) {
             _showVerificationDialog(authState, isSignIn: true);
           }
         } else {
@@ -374,17 +378,21 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         await _handleAuthSuccess(authState);
       } else {
         // Send email verification code
+        bool prepSuccess = false;
         try {
           final signUp = authState.client.signUp;
           if (signUp != null &&
               (signUp.unverified(clerk.Field.emailAddress) ||
                   signUp.missingFields.isEmpty)) {
             await authState.attemptSignUp(strategy: clerk.Strategy.emailCode);
+            prepSuccess = true;
           }
         } catch (prepErr) {
-          debugPrint('Notice while preparing emailCode signup: $prepErr');
+          debugPrint('Error while preparing emailCode signup: $prepErr');
+          _showError(_parseClerkError(prepErr));
+          return;
         }
-        if (mounted) {
+        if (mounted && prepSuccess) {
           _showVerificationDialog(authState, isSignIn: false);
         }
       }
