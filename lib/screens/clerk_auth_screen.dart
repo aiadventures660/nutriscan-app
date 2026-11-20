@@ -148,6 +148,9 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
   }
 
   static String _parseClerkError(dynamic error) {
+    if (error is clerk.ApiResponse) {
+      return error.errorCollection.errorMessage;
+    }
     if (error is clerk.ClerkError) {
       if (error.argument != null && error.argument!.trim().isNotEmpty) {
         return error.argument!;
@@ -259,15 +262,58 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
       _showError('Please enter your email address.');
       return;
     }
-    if (password.isEmpty) {
-      _showError('Please enter your password.');
-      return;
-    }
 
     setState(() => _isLoading = true);
     HapticFeedback.mediumImpact();
 
     try {
+      // If password is not provided, proceed directly to Passwordless / Email OTP Sign-In
+      if (password.isEmpty) {
+        final res = await authState.fetchApiResponse(
+          '/client/sign_ins',
+          params: {'identifier': email},
+        );
+        if (res.isError) {
+          _showError(_parseClerkError(res.errorCollection));
+          return;
+        }
+        final signIn = authState.client.signIn;
+        if (signIn != null && signIn.status.needsFactor) {
+          final stage = signIn.needsSecondFactor
+              ? clerk.Stage.second
+              : clerk.Stage.first;
+          final availableFactors = signIn.factorsFor(stage);
+          final emailFactor = availableFactors
+              .where((f) => f.strategy == clerk.Strategy.emailCode)
+              .firstOrNull;
+
+          if (emailFactor?.emailAddressId != null) {
+            final prepRes = await authState.fetchApiResponse(
+              '/client/sign_ins/${signIn.id}/prepare_${stage.name}_factor',
+              params: {
+                'strategy': clerk.Strategy.emailCode.name,
+                'email_address_id': emailFactor!.emailAddressId,
+              },
+            );
+            if (prepRes.isError) {
+              _showError(_parseClerkError(prepRes.errorCollection));
+              return;
+            }
+          } else {
+            await authState.attemptSignIn(
+              strategy: clerk.Strategy.emailCode,
+              identifier: email,
+            );
+          }
+          if (mounted) {
+            _showVerificationDialog(authState, isSignIn: true);
+          }
+        } else {
+          _showError('Unable to send verification code. Please check your email.');
+        }
+        return;
+      }
+
       await authState.attemptSignIn(
         strategy: clerk.Strategy.password,
         identifier: email,
@@ -291,13 +337,17 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
                 .firstOrNull;
 
             if (emailFactor?.emailAddressId != null) {
-              await authState.fetchApiResponse(
+              final prepRes = await authState.fetchApiResponse(
                 '/client/sign_ins/${signIn.id}/prepare_${stage.name}_factor',
                 params: {
                   'strategy': clerk.Strategy.emailCode.name,
                   'email_address_id': emailFactor!.emailAddressId,
                 },
               );
+              if (prepRes.isError) {
+                _showError(_parseClerkError(prepRes.errorCollection));
+                return;
+              }
               prepSuccess = true;
             } else {
               final strategyToPrepare = emailFactor?.strategy ??
@@ -329,7 +379,7 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         _showError('No account found for this email. Switched to Sign Up to create your account.');
         setState(() => _isSignUpMode = true);
       } else if (code == 'form_password_incorrect') {
-        _showError('Incorrect password. Please try again or tap Forgot Password.');
+        _showError('Incorrect password. Clear password to sign in via Email OTP, or tap Forgot Password.');
       } else {
         _showError(_parseClerkError(e));
       }
@@ -398,12 +448,16 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         try {
           final signUp = authState.client.signUp;
           if (signUp != null) {
-            await authState.fetchApiResponse(
+            final prepRes = await authState.fetchApiResponse(
               '/client/sign_ups/${signUp.id}/prepare_verification',
               params: {
                 'strategy': clerk.Strategy.emailCode.name,
               },
             );
+            if (prepRes.isError) {
+              _showError(_parseClerkError(prepRes.errorCollection));
+              return;
+            }
             prepSuccess = true;
           } else {
             await authState.attemptSignUp(strategy: clerk.Strategy.emailCode);
@@ -1535,13 +1589,16 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
               .firstOrNull;
 
           if (emailFactor?.emailAddressId != null) {
-            await widget.authState.fetchApiResponse(
+            final res = await widget.authState.fetchApiResponse(
               '/client/sign_ins/${signIn.id}/prepare_${stage.name}_factor',
               params: {
                 'strategy': clerk.Strategy.emailCode.name,
                 'email_address_id': emailFactor!.emailAddressId,
               },
             );
+            if (res.isError) {
+              throw res.errorCollection.errorMessage;
+            }
           } else {
             await widget.authState.attemptSignIn(
               strategy: clerk.Strategy.emailCode,
@@ -1557,12 +1614,15 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
       } else {
         final signUp = widget.authState.client.signUp;
         if (signUp != null) {
-          await widget.authState.fetchApiResponse(
+          final res = await widget.authState.fetchApiResponse(
             '/client/sign_ups/${signUp.id}/prepare_verification',
             params: {
               'strategy': clerk.Strategy.emailCode.name,
             },
           );
+          if (res.isError) {
+            throw res.errorCollection.errorMessage;
+          }
         } else {
           await widget.authState.attemptSignUp(strategy: clerk.Strategy.emailCode);
         }
@@ -1614,13 +1674,23 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
           final stage = signIn.needsSecondFactor
               ? clerk.Stage.second
               : clerk.Stage.first;
-          await widget.authState.fetchApiResponse(
+          final res = await widget.authState.fetchApiResponse(
             '/client/sign_ins/${signIn.id}/attempt_${stage.name}_factor',
             params: {
               'strategy': clerk.Strategy.emailCode.name,
               'code': code,
             },
           );
+          if (res.isError) {
+            if (mounted) {
+              setState(() {
+                _dialogError = res.errorCollection.errorMessage;
+                _isVerifying = false;
+              });
+            }
+            return;
+          }
+          widget.authState.update();
         } else {
           await widget.authState.attemptSignIn(
             strategy: clerk.Strategy.emailCode,
@@ -1630,13 +1700,23 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
       } else {
         final signUp = widget.authState.client.signUp;
         if (signUp != null) {
-          await widget.authState.fetchApiResponse(
+          final res = await widget.authState.fetchApiResponse(
             '/client/sign_ups/${signUp.id}/attempt_verification',
             params: {
               'strategy': clerk.Strategy.emailCode.name,
               'code': code,
             },
           );
+          if (res.isError) {
+            if (mounted) {
+              setState(() {
+                _dialogError = res.errorCollection.errorMessage;
+                _isVerifying = false;
+              });
+            }
+            return;
+          }
+          widget.authState.update();
         } else {
           await widget.authState.attemptSignUp(
             strategy: clerk.Strategy.emailCode,
