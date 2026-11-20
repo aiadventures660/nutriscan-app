@@ -282,18 +282,34 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
           // Prepare and send the factor code to user email
           bool prepSuccess = false;
           try {
-            final availableFactors = signIn.needsSecondFactor
-                ? signIn.supportedSecondFactors
-                : signIn.supportedFirstFactors;
+            final stage = signIn.needsSecondFactor
+                ? clerk.Stage.second
+                : clerk.Stage.first;
+            final availableFactors = signIn.factorsFor(stage);
             final emailFactor = availableFactors
                 .where((f) => f.strategy == clerk.Strategy.emailCode)
                 .firstOrNull;
-            final strategyToPrepare = emailFactor?.strategy ??
-                (availableFactors.isNotEmpty
-                    ? availableFactors.first.strategy
-                    : clerk.Strategy.emailCode);
-            await authState.attemptSignIn(strategy: strategyToPrepare);
-            prepSuccess = true;
+
+            if (emailFactor?.emailAddressId != null) {
+              await authState.fetchApiResponse(
+                '/client/sign_ins/${signIn.id}/prepare_${stage.name}_factor',
+                params: {
+                  'strategy': clerk.Strategy.emailCode.name,
+                  'email_address_id': emailFactor!.emailAddressId,
+                },
+              );
+              prepSuccess = true;
+            } else {
+              final strategyToPrepare = emailFactor?.strategy ??
+                  (availableFactors.isNotEmpty
+                      ? availableFactors.first.strategy
+                      : clerk.Strategy.emailCode);
+              await authState.attemptSignIn(
+                strategy: strategyToPrepare,
+                identifier: email,
+              );
+              prepSuccess = true;
+            }
           } catch (prepErr) {
             debugPrint('Error while preparing emailCode signin: $prepErr');
             _showError(_parseClerkError(prepErr));
@@ -381,9 +397,15 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         bool prepSuccess = false;
         try {
           final signUp = authState.client.signUp;
-          if (signUp != null &&
-              (signUp.unverified(clerk.Field.emailAddress) ||
-                  signUp.missingFields.isEmpty)) {
+          if (signUp != null) {
+            await authState.fetchApiResponse(
+              '/client/sign_ups/${signUp.id}/prepare_verification',
+              params: {
+                'strategy': clerk.Strategy.emailCode.name,
+              },
+            );
+            prepSuccess = true;
+          } else {
             await authState.attemptSignUp(strategy: clerk.Strategy.emailCode);
             prepSuccess = true;
           }
@@ -511,7 +533,18 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => Theme(
-        data: AppTheme.lightTheme,
+        data: AppTheme.lightTheme.copyWith(
+          scaffoldBackgroundColor: Colors.white,
+          canvasColor: Colors.white,
+          cardColor: Colors.white,
+          inputDecorationTheme: const InputDecorationTheme(
+            filled: false,
+            fillColor: Colors.transparent,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+          ),
+        ),
         child: StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
@@ -701,7 +734,21 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: AppTheme.lightTheme,
+      data: AppTheme.lightTheme.copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF9FAF9),
+        canvasColor: Colors.white,
+        cardColor: Colors.white,
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: false,
+          fillColor: Colors.transparent,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+        ),
+      ),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.dark.copyWith(
           statusBarColor: Colors.transparent,
@@ -1190,12 +1237,15 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
           obscureText: isPassword && obscureText,
           keyboardType: keyboardType,
           textCapitalization: textCapitalization,
+          cursorColor: const Color(0xFF00B368),
           style: const TextStyle(
             color: Color(0xFF0F1A14),
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
           decoration: InputDecoration(
+            filled: false,
+            fillColor: Colors.transparent,
             hintText: hintText,
             hintStyle: const TextStyle(
               color: Color(0xFF94A3B8),
@@ -1230,6 +1280,9 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           ),
@@ -1470,24 +1523,48 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
     });
 
     try {
-      // Attempt official resendCode first
-      try {
-        await widget.authState.resendCode(clerk.Strategy.emailCode);
-      } catch (err) {
-        final errStr = err.toString();
-        // If "No initial code has been set up to resend", explicitly initialize the code strategy
-        if (errStr.contains('No initial code has been set up') ||
-            (err is clerk.ClerkError &&
-                err.code == clerk.ClerkErrorCode.noInitialCodeHasBeenSetUpToResend)) {
-          if (widget.isSignIn) {
-            await widget.authState
-                .attemptSignIn(strategy: clerk.Strategy.emailCode);
+      if (widget.isSignIn) {
+        final signIn = widget.authState.client.signIn;
+        if (signIn != null && signIn.status.needsFactor) {
+          final stage = signIn.needsSecondFactor
+              ? clerk.Stage.second
+              : clerk.Stage.first;
+          final availableFactors = signIn.factorsFor(stage);
+          final emailFactor = availableFactors
+              .where((f) => f.strategy == clerk.Strategy.emailCode)
+              .firstOrNull;
+
+          if (emailFactor?.emailAddressId != null) {
+            await widget.authState.fetchApiResponse(
+              '/client/sign_ins/${signIn.id}/prepare_${stage.name}_factor',
+              params: {
+                'strategy': clerk.Strategy.emailCode.name,
+                'email_address_id': emailFactor!.emailAddressId,
+              },
+            );
           } else {
-            await widget.authState
-                .attemptSignUp(strategy: clerk.Strategy.emailCode);
+            await widget.authState.attemptSignIn(
+              strategy: clerk.Strategy.emailCode,
+              identifier: widget.email,
+            );
           }
         } else {
-          rethrow;
+          await widget.authState.attemptSignIn(
+            strategy: clerk.Strategy.emailCode,
+            identifier: widget.email,
+          );
+        }
+      } else {
+        final signUp = widget.authState.client.signUp;
+        if (signUp != null) {
+          await widget.authState.fetchApiResponse(
+            '/client/sign_ups/${signUp.id}/prepare_verification',
+            params: {
+              'strategy': clerk.Strategy.emailCode.name,
+            },
+          );
+        } else {
+          await widget.authState.attemptSignUp(strategy: clerk.Strategy.emailCode);
         }
       }
 
@@ -1532,15 +1609,40 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
 
     try {
       if (widget.isSignIn) {
-        await widget.authState.attemptSignIn(
-          strategy: clerk.Strategy.emailCode,
-          code: code,
-        );
+        final signIn = widget.authState.client.signIn;
+        if (signIn != null) {
+          final stage = signIn.needsSecondFactor
+              ? clerk.Stage.second
+              : clerk.Stage.first;
+          await widget.authState.fetchApiResponse(
+            '/client/sign_ins/${signIn.id}/attempt_${stage.name}_factor',
+            params: {
+              'strategy': clerk.Strategy.emailCode.name,
+              'code': code,
+            },
+          );
+        } else {
+          await widget.authState.attemptSignIn(
+            strategy: clerk.Strategy.emailCode,
+            code: code,
+          );
+        }
       } else {
-        await widget.authState.attemptSignUp(
-          strategy: clerk.Strategy.emailCode,
-          code: code,
-        );
+        final signUp = widget.authState.client.signUp;
+        if (signUp != null) {
+          await widget.authState.fetchApiResponse(
+            '/client/sign_ups/${signUp.id}/attempt_verification',
+            params: {
+              'strategy': clerk.Strategy.emailCode.name,
+              'code': code,
+            },
+          );
+        } else {
+          await widget.authState.attemptSignUp(
+            strategy: clerk.Strategy.emailCode,
+            code: code,
+          );
+        }
       }
 
       if (widget.authState.isSignedIn) {
@@ -1575,7 +1677,21 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: AppTheme.lightTheme,
+      data: AppTheme.lightTheme.copyWith(
+        scaffoldBackgroundColor: Colors.white,
+        canvasColor: Colors.white,
+        cardColor: Colors.white,
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: false,
+          fillColor: Colors.transparent,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+        ),
+      ),
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -1703,6 +1819,8 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
                       letterSpacing: 4.0,
                     ),
                     decoration: const InputDecoration(
+                      filled: false,
+                      fillColor: Colors.transparent,
                       counterText: '',
                       hintText: '• • • • • •',
                       hintStyle: TextStyle(
@@ -1712,6 +1830,11 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
                       prefixIcon: Icon(Icons.pin_outlined,
                           color: Color(0xFF64748B), size: 20),
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
                       contentPadding:
                           EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     ),
@@ -1792,7 +1915,7 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
                   ? null
                   : _resendCode,
               child: _isResending
-                  ? Row(
+                  ? const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
@@ -1800,14 +1923,14 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: AppTheme.primaryGreen,
+                            color: Color(0xFF00B368),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text(
                           'Sending code...',
                           style: TextStyle(
-                            color: AppTheme.primaryGreen,
+                            color: Color(0xFF00B368),
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1820,8 +1943,8 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
                           : "Didn't receive code? Resend Code",
                       style: TextStyle(
                         color: _cooldownSeconds > 0
-                            ? Colors.grey
-                            : AppTheme.primaryGreen,
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF00B368),
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
