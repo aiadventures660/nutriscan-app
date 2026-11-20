@@ -116,6 +116,7 @@ async function runTests() {
       protein: 46,
       servingSize: '1 large bowl (400g)',
     });
+    assert.ok(editedMeal, 'Meal must be updated');
     assert.strictEqual(editedMeal.calories, 580);
     assert.strictEqual(editedMeal.protein, 46);
     assert.strictEqual(editedMeal.userEdited, true, 'Meal should be marked userEdited: true');

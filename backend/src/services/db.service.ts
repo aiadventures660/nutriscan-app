@@ -568,10 +568,10 @@ export class DatabaseService {
     };
   }
 
-  async updateMeal(userId: string, mealId: string, updates: Partial<MealRecord>): Promise<MealRecord> {
+  async updateMeal(userId: string, mealId: string, updates: Partial<MealRecord>): Promise<MealRecord | null> {
     const existing = await this.getMealById(userId, mealId);
     if (!existing) {
-      throw new Error(`Meal not found: ${mealId}`);
+      return null;
     }
 
     const now = new Date().toISOString();

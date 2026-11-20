@@ -74,7 +74,10 @@ async function runIsolationTests() {
     console.log('6. Verifying cross-tenant modification prevention...');
     let updateFailed = false;
     try {
-      await db.updateMeal(profileA.id, mealB.id, { calories: 999 });
+      const updateRes = await db.updateMeal(profileA.id, mealB.id, { calories: 999 });
+      if (!updateRes) {
+        updateFailed = true;
+      }
     } catch {
       updateFailed = true;
     }

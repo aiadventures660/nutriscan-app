@@ -143,7 +143,7 @@ async function runLiveAudit() {
     },
     body: JSON.stringify({ calories: 9999 }),
   });
-  assert.ok(crossPut.status === 404 || crossPut.status === 500, 'Direct cross-tenant update must be rejected');
+  assert.strictEqual(crossPut.status, 404, 'Direct cross-tenant update must return 404 Not Found');
   console.log(`✓ Cross-tenant PUT rejected with HTTP ${crossPut.status}`);
 
   const crossDel = await fetch(`${LIVE_BACKEND_URL}/api/v1/meals/${mealA_Id}`, {

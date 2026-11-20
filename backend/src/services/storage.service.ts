@@ -33,6 +33,18 @@ export class StorageService {
           });
 
         if (!error && data) {
+          // Generate short-lived signed URL for private user photo storage
+          const { data: signedData, error: signedError } = await getSupabase().storage
+            .from(env.SUPABASE_STORAGE_BUCKET)
+            .createSignedUrl(filename, 3600); // 1-hour expiration
+
+          if (!signedError && signedData?.signedUrl) {
+            return {
+              url: signedData.signedUrl,
+              storagePath: filename,
+            };
+          }
+
           const { data: publicUrlData } = getSupabase().storage
             .from(env.SUPABASE_STORAGE_BUCKET)
             .getPublicUrl(filename);
@@ -85,6 +97,18 @@ export class StorageService {
           });
 
         if (!error && data) {
+          // Generate short-lived signed URL for private avatar storage
+          const { data: signedData, error: signedError } = await getSupabase().storage
+            .from(env.SUPABASE_AVATAR_BUCKET)
+            .createSignedUrl(filename, 3600);
+
+          if (!signedError && signedData?.signedUrl) {
+            return {
+              url: signedData.signedUrl,
+              storagePath: filename,
+            };
+          }
+
           const { data: publicUrlData } = getSupabase().storage
             .from(env.SUPABASE_AVATAR_BUCKET)
             .getPublicUrl(filename);
@@ -111,6 +135,55 @@ export class StorageService {
       url: `/uploads/${userId}/${localFileName}`,
       storagePath: `local:${userId}/${localFileName}`,
     };
+  }
+
+  /**
+   * Generate short-lived signed URL for a single storage path
+   */
+  async getSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string | null> {
+    if (!isSupabaseConfigured() || !storagePath || storagePath.startsWith('local:')) {
+      return null;
+    }
+    try {
+      const { data, error } = await getSupabase().storage
+        .from(env.SUPABASE_STORAGE_BUCKET)
+        .createSignedUrl(storagePath, expiresIn);
+      if (!error && data?.signedUrl) {
+        return data.signedUrl;
+      }
+    } catch (err) {
+      logger.warn('Failed to generate signed URL', { err, storagePath });
+    }
+    return null;
+  }
+
+  /**
+   * Batch generate short-lived signed URLs for multiple storage paths
+   */
+  async getSignedUrls(storagePaths: string[], expiresIn: number = 3600): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (!isSupabaseConfigured() || storagePaths.length === 0) {
+      return map;
+    }
+    try {
+      const validPaths = Array.from(new Set(storagePaths.filter((p) => p && !p.startsWith('local:'))));
+      if (validPaths.length === 0) return map;
+
+      const { data, error } = await getSupabase().storage
+        .from(env.SUPABASE_STORAGE_BUCKET)
+        .createSignedUrls(validPaths, expiresIn);
+
+      if (!error && Array.isArray(data)) {
+        for (const item of data) {
+          if (item.path && item.signedUrl) {
+            map.set(item.path, item.signedUrl);
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to batch generate signed URLs', { err });
+    }
+    return map;
   }
 
   private getExtensionFromMime(mimeType: string): string {

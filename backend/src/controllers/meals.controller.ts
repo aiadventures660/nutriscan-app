@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { db } from '../services/db.service.js';
+import { storageService } from '../services/storage.service.js';
 import { AuthenticatedRequest } from '../types/index.js';
 
 const normalizeMealType = (val: unknown) => {
@@ -66,6 +67,19 @@ export class MealsController {
       endDate,
     });
 
+    // Dynamically refresh short-lived signed URLs for private food image storage
+    const pathsToSign = result.meals
+      .map((m) => m.storagePath)
+      .filter((p): p is string => Boolean(p && !p.startsWith('local:')));
+    if (pathsToSign.length > 0) {
+      const signedMap = await storageService.getSignedUrls(pathsToSign, 3600);
+      for (const m of result.meals) {
+        if (m.storagePath && signedMap.has(m.storagePath)) {
+          m.imageUrl = signedMap.get(m.storagePath);
+        }
+      }
+    }
+
     res.json({
       success: true,
       data: result.meals,
@@ -86,6 +100,14 @@ export class MealsController {
     if (!meal) {
       res.status(404).json({ success: false, error: 'Not Found', message: 'Meal entry not found' });
       return;
+    }
+
+    // Refresh short-lived signed URL for private food image storage
+    if (meal.storagePath && !meal.storagePath.startsWith('local:')) {
+      const signedUrl = await storageService.getSignedUrl(meal.storagePath, 3600);
+      if (signedUrl) {
+        meal.imageUrl = signedUrl;
+      }
     }
 
     res.json({ success: true, data: meal });
@@ -109,6 +131,15 @@ export class MealsController {
     const validated = updateMealSchema.parse(req.body);
 
     const updated = await db.updateMeal(userId, mealId, validated);
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'Meal entry not found',
+      });
+      return;
+    }
+
     res.json({
       success: true,
       data: updated,
