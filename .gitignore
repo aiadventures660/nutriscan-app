@@ -51,6 +51,7 @@ node_modules/
 backend/node_modules/
 backend/dist/
 backend/uploads/
+backend/test_fixtures/
 *.log
 
 # Android Studio & Gradle

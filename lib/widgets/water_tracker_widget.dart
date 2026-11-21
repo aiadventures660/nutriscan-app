@@ -26,47 +26,49 @@ class WaterTrackerWidget extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.macroProtein.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.macroProtein.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.water_drop_rounded,
-                      color: AppTheme.macroProtein,
-                      size: 20,
-                    ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.macroProtein.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.macroProtein.withValues(alpha: 0.3),
                   ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hydration Tracker',
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.3,
-                        ),
+                ),
+                child: Icon(
+                  Icons.water_drop_rounded,
+                  color: AppTheme.macroProtein,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hydration Tracker',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
                       ),
-                      const SizedBox(height: 2),
-                      Row(
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
                         children: [
                           AnimatedCountText(
                             value: currentMl.toDouble(),
                             suffix: ' ml',
                             style: TextStyle(
                               color: AppTheme.macroProtein,
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -80,13 +82,15 @@ class WaterTrackerWidget extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
 
               // Quick Add Buttons with Bouncy Feedback
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   BouncingWidget(
                     onTap: () => onAddWater(250),

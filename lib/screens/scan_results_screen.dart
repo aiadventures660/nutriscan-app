@@ -285,8 +285,8 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(15),
-                child: scanData.imagePath.isNotEmpty &&
-                        File(scanData.imagePath).existsSync()
+                child: (scanData.imagePath.isNotEmpty &&
+                        File(scanData.imagePath).existsSync())
                     ? Image.file(
                         File(scanData.imagePath),
                         fit: BoxFit.cover,
@@ -296,11 +296,21 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
                           size: 36,
                         ),
                       )
-                    : Icon(
-                        Icons.restaurant_rounded,
-                        color: AppTheme.primaryGreen,
-                        size: 36,
-                      ),
+                    : (scanData.imagePath.startsWith('http')
+                        ? Image.network(
+                            scanData.imagePath,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(
+                              Icons.restaurant_rounded,
+                              color: AppTheme.primaryGreen,
+                              size: 36,
+                            ),
+                          )
+                        : Icon(
+                            Icons.restaurant_rounded,
+                            color: AppTheme.primaryGreen,
+                            size: 36,
+                          )),
               ),
             ),
           ),

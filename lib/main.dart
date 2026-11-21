@@ -11,6 +11,7 @@ import 'screens/enhanced_home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/user_setup_screen.dart';
 import 'screens/clerk_auth_screen.dart';
+import 'widgets/nutri_loading_indicator.dart';
 
 void main() async {
   // Ensure Flutter engine bindings are initialized
@@ -68,15 +69,16 @@ class FoodScannerApp extends StatelessWidget {
 
     return ChangeNotifierProvider.value(
       value: provider,
-      child: Consumer<AppStateProvider>(
-        builder: (context, appState, child) {
-          AppTheme.setDarkMode(appState.isDarkMode);
+      child: Selector<AppStateProvider, ThemeMode>(
+        selector: (_, p) => p.themeMode,
+        builder: (context, themeMode, child) {
+          AppTheme.setDarkMode(themeMode == ThemeMode.dark);
 
           return MaterialApp(
             title: 'NutriScan Pro',
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
-            themeMode: appState.themeMode,
+            themeMode: themeMode,
             debugShowCheckedModeBanner: false,
             builder: (context, child) {
               return ClerkAuth(
@@ -168,7 +170,7 @@ class FoodScannerApp extends StatelessWidget {
 /// 2. Incomplete Profile -> [UserSetupScreen]
 /// 3. Authenticated -> [EnhancedHomeScreen]
 /// 4. Signed Out -> [ClerkAuthScreen]
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   final bool hasSeenOnboarding;
   final bool hasCompletedProfile;
 
@@ -179,16 +181,52 @@ class AuthGate extends StatelessWidget {
   });
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  String? _syncedClerkId;
+
+  @override
   Widget build(BuildContext context) {
-    if (!hasSeenOnboarding) {
+    if (!widget.hasSeenOnboarding) {
       return const OnboardingScreen();
     }
 
-    if (!hasCompletedProfile) {
+    if (!widget.hasCompletedProfile) {
       return const UserSetupScreen(isFirstTime: true);
     }
 
+    final isInitialized =
+        context.select<AppStateProvider, bool>((p) => p.isInitialized);
+    if (!isInitialized) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundDark,
+        body: Container(
+          decoration: BoxDecoration(gradient: AppTheme.backgroundGradient),
+          child: const Center(
+            child: NutriLoadingIndicator.fullScreen(
+              message: 'Restoring your nutrition dashboard...',
+            ),
+          ),
+        ),
+      );
+    }
+
     return ClerkAuthBuilder(
+      signingInBuilder: (context, authState) {
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundDark,
+          body: Container(
+            decoration: BoxDecoration(gradient: AppTheme.backgroundGradient),
+            child: const Center(
+              child: NutriLoadingIndicator.fullScreen(
+                message: 'Signing in to NutriScan...',
+              ),
+            ),
+          ),
+        );
+      },
       signedInBuilder: (context, authState) {
         final user = authState.user;
         if (user != null) {
@@ -207,37 +245,35 @@ class AuthGate extends StatelessWidget {
             ApiClient().setSessionToken(token);
           }
 
-          final provider = context.read<AppStateProvider>();
-          final emails = user.emailAddresses;
-          final primaryEmail = (emails != null && emails.isNotEmpty)
-              ? emails.first.emailAddress
-              : null;
-          final displayName = user.firstName != null
-              ? '${user.firstName} ${user.lastName ?? ''}'.trim()
-              : user.username;
+          // Restore user data only ONCE per authenticated login/session transition,
+          // never repeatedly during widget rebuilds or empty history states.
+          if (_syncedClerkId != user.id) {
+            _syncedClerkId = user.id;
+            final provider = context.read<AppStateProvider>();
+            final emails = user.emailAddresses;
+            final primaryEmail = (emails != null && emails.isNotEmpty)
+                ? emails.first.emailAddress
+                : null;
+            final displayName = user.firstName != null
+                ? '${user.firstName} ${user.lastName ?? ''}'.trim()
+                : user.username;
 
-          // Automatically restore or sync user data from Supabase backend
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (provider.clerkUserId != user.id || provider.history.isEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
               provider.restoreUserDataFromBackend(
                 clerkId: user.id,
                 fallbackEmail: primaryEmail,
                 fallbackName: displayName,
                 photoUrl: user.imageUrl,
               );
-            } else {
-              provider.syncClerkUserData(
-                clerkId: user.id,
-                email: primaryEmail,
-                name: displayName,
-                photoUrl: user.imageUrl,
-              );
-            }
-          });
+            });
+          }
+        } else {
+          _syncedClerkId = null;
         }
         return const EnhancedHomeScreen();
       },
       signedOutBuilder: (context, authState) {
+        _syncedClerkId = null;
         return const ClerkAuthScreen();
       },
     );

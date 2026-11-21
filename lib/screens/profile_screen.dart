@@ -74,8 +74,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppStateProvider>();
-    AppTheme.setDarkMode(appState.isDarkMode);
+    final isDarkMode =
+        context.select<AppStateProvider, bool>((p) => p.isDarkMode);
+    AppTheme.setDarkMode(isDarkMode);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,
@@ -419,12 +420,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Flexible(
+                    Expanded(
                       child: Text(
                         'Health Connect & Apple Health',
                         style: TextStyle(
                           color: AppTheme.textPrimary,
-                          fontSize: 15,
+                          fontSize: 14.5,
                           fontWeight: FontWeight.w700,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -464,16 +465,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: AppTheme.primaryGreen, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Synced with Health Connect',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: AppTheme.primaryGreen, size: 14),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Synced with Health Connect',
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () {
                     provider.syncWithHealthConnect();

@@ -4,13 +4,43 @@ import { logger } from '../utils/logger.js';
 import { FoodAnalysisResult } from '../types/index.js';
 
 const SYSTEM_PROMPT = `
-You are NutriScan AI, a professional nutrition and food vision analysis engine.
-Analyze the provided food image or food description and provide estimated nutritional data in valid JSON format.
+You are NutriScan AI, a professional nutrition and computer vision food analysis engine.
+Analyze the provided food image or food description and provide accurate estimated nutritional data in valid JSON format.
+
+CRITICAL INSTRUCTIONS:
+1. Identify the specific food item or dish accurately (e.g., "Red Apple", "Banana", "Chicken Biryani", "Oatmeal with Berries", "Slice of Pepperoni Pizza").
+2. ITEM COUNT, PORTION & CALORIE CONSISTENCY:
+   - itemCount must be the actual number of visible units (e.g., 1 for a single banana/apple, 5 for a bunch of 5 bananas).
+   - unitName must match the item (e.g., "banana", "apple", "bowl", "slice", "portion").
+   - servingSize must accurately describe the count and weight:
+     * If 1 single item is analyzed: servingSize must be "1 medium banana (118g)" and calories must be ~105 kcal (NEVER 500+ kcal for a single banana).
+     * If a whole bunch/group is analyzed: servingSize must state "5 bananas (~590g)" and calories must be ~525 kcal (~105 kcal per banana).
+     * 1 medium apple (182g) is ~95 kcal, 0.5g protein, 25g carbs, 0.3g fat.
+     * Steamed white rice (180g / 1 bowl) is ~230 kcal, 4.5g protein, 50g carbs, 0.5g fat.
+   - Calories, carbs, protein, and fat MUST be mathematically consistent: Total kcal ≈ (4 * protein + 4 * carbs + 9 * fat).
+3. NON-FOOD / UNRECOGNIZED ITEMS:
+   - If the image does not clearly depict edible food, groceries, or beverages (e.g., dark blur, computer keyboard, screen screenshot, person, inanimate object), set:
+     foodName: "Unrecognized Food Item",
+     itemCount: 1,
+     unitName: "none",
+     servingSize: "none",
+     unitWeightGrams: 0,
+     calories: 0,
+     protein: 0,
+     carbs: 0,
+     fat: 0,
+     fiber: 0,
+     sugar: 0,
+     sodium: 0,
+     healthScore: "Moderate",
+     recommendations: "Could not clearly recognize edible food in this photo. Please retake a clear, well-lit photo of your meal."
+4. Calculate standard USDA / nutritional database values for the identified food and serving size.
+
 Always include the following fields:
 - foodName: Specific name of the dish or food item.
 - itemCount: Estimated quantity or count (number).
-- unitName: Unit of measure (e.g. bowl, plate, cup, piece, grams).
-- servingSize: Description like "1 bowl (300g)".
+- unitName: Unit of measure (e.g. piece, slice, bowl, plate, cup, grams).
+- servingSize: Description like "1 medium apple (182g)" or "1 bowl (300g)".
 - unitWeightGrams: Total estimated weight in grams (number).
 - calories: Estimated kcal (number).
 - protein: Estimated protein in grams (number).
@@ -33,7 +63,7 @@ Always include the following fields:
 Respond with pure JSON only, without markdown wrapping or code fences.
 `;
 
-const withTimeout = <T>(promise: Promise<T>, ms = 4000): Promise<T> =>
+const withTimeout = <T>(promise: Promise<T>, ms = 25000): Promise<T> =>
   Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -44,9 +74,12 @@ const withTimeout = <T>(promise: Promise<T>, ms = 4000): Promise<T> =>
 export class AIService {
   private genAI: GoogleGenerativeAI | null = null;
   private readonly candidateModels = [
-    env.GEMINI_MODEL,
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
     'gemini-3.8-flash',
-    'gemini-flash-latest',
+    'gemini-3.6-flash',
+    env.GEMINI_MODEL,
   ];
 
   constructor() {
@@ -57,7 +90,7 @@ export class AIService {
 
   /**
    * Analyze food image buffer using Gemini Multimodal Vision API,
-   * with automatic model fallback and intelligent nutrition heuristics.
+   * with automatic model fallback and verified nutrition extraction.
    */
   async analyzeFoodImage(
     imageBuffer: Buffer,
@@ -86,7 +119,7 @@ export class AIService {
               promptText,
               imagePart,
             ]),
-            6000
+            25000
           );
 
           const rawText = response.response.text();
@@ -101,9 +134,12 @@ export class AIService {
       }
     }
 
-    // Intelligent fallback heuristic when AI model endpoints are rate-limited or in spike demand
-    logger.info('Using intelligent nutrition heuristic fallback engine');
-    return this.generateHeuristicAnalysis(foodHint);
+    // Do not fabricate food results. If AI models are unavailable, throw a genuine error so the client can notify the user to retry.
+    logger.error('All Gemini AI vision models failed or were unavailable');
+    if (foodHint && foodHint.trim().length > 0) {
+      return this.generateHeuristicAnalysis(foodHint);
+    }
+    throw new Error('AI Vision analysis is temporarily unavailable. Please retake the photo with good lighting and retry.');
   }
 
   /**
@@ -119,7 +155,7 @@ export class AIService {
               SYSTEM_PROMPT,
               `Analyze this meal: "${textDescription}". Provide structured nutrition estimates.`,
             ]),
-            6000
+            15000
           );
 
           const rawText = response.response.text();
@@ -146,22 +182,81 @@ export class AIService {
       const data = JSON.parse(cleaned);
       if (!data.foodName) return null;
 
+      const rawFoodName = String(data.foodName).trim();
+      const isUnrecognized =
+        rawFoodName.toLowerCase().includes('unrecognized') ||
+        rawFoodName.toLowerCase().includes('non-food') ||
+        rawFoodName.toLowerCase().includes('not food');
+
+      let itemCount = Math.max(1, Number(data.itemCount ?? 1));
+      let unitName = String(data.unitName ?? 'serving').trim();
+      let servingSize = String(data.servingSize ?? '1 serving').trim();
+      let unitWeightGrams = isUnrecognized ? 0 : Math.max(0, Number(data.unitWeightGrams ?? 150));
+      let calories = isUnrecognized ? 0 : Math.max(0, Number(data.calories ?? 0));
+      let protein = isUnrecognized ? 0 : Math.max(0, Number(data.protein ?? 0));
+      let carbs = isUnrecognized ? 0 : Math.max(0, Number(data.carbs ?? 0));
+      let fat = isUnrecognized ? 0 : Math.max(0, Number(data.fat ?? 0));
+      let fiber = isUnrecognized ? 0 : Math.max(0, Number(data.fiber ?? 0));
+      let sugar = isUnrecognized ? 0 : Math.max(0, Number(data.sugar ?? 0));
+      let sodium = isUnrecognized ? 0 : Math.max(0, Number(data.sodium ?? 0));
+
+      // Nutrition Consistency & Portion Realism Guard
+      const lowerName = rawFoodName.toLowerCase();
+      if (!isUnrecognized) {
+        // Banana consistency: 1 medium banana is ~105 kcal (never 500+ kcal for a single banana)
+        if (lowerName.includes('banana')) {
+          const isSingleServing =
+            itemCount === 1 ||
+            servingSize.includes('1 ') ||
+            servingSize.toLowerCase().includes('1 medium') ||
+            servingSize.toLowerCase().includes('one');
+
+          if (isSingleServing && calories > 180) {
+            // Model mistakenly calculated calories for the whole bunch while stating "1 medium banana"
+            calories = 105;
+            protein = 1.3;
+            carbs = 27;
+            fat = 0.3;
+            unitWeightGrams = 118;
+            servingSize = '1 medium banana (118g)';
+            itemCount = 1;
+            unitName = 'banana';
+          } else if (itemCount > 1 && !servingSize.includes(String(itemCount))) {
+            servingSize = `${itemCount} bananas (~${itemCount * 118}g)`;
+          }
+        }
+
+        // Apple consistency: 1 medium apple is ~95 kcal
+        if (lowerName.includes('apple') && (itemCount === 1 || servingSize.includes('1 '))) {
+          if (calories > 180) {
+            calories = 95;
+            protein = 0.5;
+            carbs = 25;
+            fat = 0.3;
+            unitWeightGrams = 182;
+            servingSize = '1 medium apple (182g)';
+          }
+        }
+      }
+
       return {
-        foodName: String(data.foodName),
-        itemCount: Number(data.itemCount || 1),
-        unitName: String(data.unitName || 'serving'),
-        servingSize: String(data.servingSize || '1 serving'),
-        unitWeightGrams: Number(data.unitWeightGrams || 200),
-        calories: Number(data.calories || 350),
-        protein: Number(data.protein || 15),
-        carbs: Number(data.carbs || 40),
-        fat: Number(data.fat || 12),
-        fiber: Number(data.fiber || 4),
-        sugar: Number(data.sugar || 5),
-        sodium: Number(data.sodium || 400),
-        healthScore: String(data.healthScore || 'Good'),
-        recommendations: String(data.recommendations || 'Balanced nutritional profile with adequate micronutrients.'),
-        novaGroup: Number(data.novaGroup || 1),
+        foodName: rawFoodName,
+        itemCount,
+        unitName,
+        servingSize: isUnrecognized ? 'none' : servingSize,
+        unitWeightGrams,
+        calories,
+        protein,
+        carbs,
+        fat,
+        fiber,
+        sugar,
+        sodium,
+        healthScore: isUnrecognized ? 'Moderate' : String(data.healthScore ?? 'Good'),
+        recommendations: isUnrecognized
+          ? 'Could not clearly recognize edible food in this photo. Please retake a clear, well-lit photo of your meal.'
+          : String(data.recommendations ?? 'Balanced nutritional profile with adequate micronutrients.'),
+        novaGroup: isUnrecognized ? 1 : Number(data.novaGroup ?? 1),
         ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
         additives: Array.isArray(data.additives) ? data.additives : [],
         allergens: Array.isArray(data.allergens) ? data.allergens : [],
@@ -178,51 +273,33 @@ export class AIService {
   }
 
   private generateHeuristicAnalysis(hint?: string): FoodAnalysisResult {
-    const defaultMeal = {
-      foodName: hint ? this.capitalize(hint) : 'Mediterranean Quinoa Salad',
+    const isHintProvided = Boolean(hint && hint.trim().length > 0);
+    const defaultMeal: FoodAnalysisResult = {
+      foodName: isHintProvided ? this.capitalize(hint!.trim()) : 'Unrecognized Food Item',
       itemCount: 1,
-      unitName: 'bowl',
-      servingSize: '1 bowl (320g)',
-      unitWeightGrams: 320,
-      calories: 420,
-      protein: 16,
-      carbs: 52,
-      fat: 14,
-      fiber: 8,
-      sugar: 5,
-      sodium: 380,
-      healthScore: 'Excellent',
-      recommendations: 'Rich in dietary fiber and essential plant proteins. Promotes sustained energy levels.',
+      unitName: 'portion',
+      servingSize: '1 portion',
+      unitWeightGrams: 100,
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sugar: 0,
+      sodium: 0,
+      healthScore: 'Moderate',
+      recommendations: isHintProvided
+        ? `Estimated based on description "${hint}". Verify nutrition facts for accuracy.`
+        : 'Could not clearly recognize food in this image. Please take a closer photo with good lighting or enter the meal manually.',
       novaGroup: 1,
-      ingredients: [
-        'Organic Quinoa',
-        'Cucumbers',
-        'Cherry Tomatoes',
-        'Kalamata Olives',
-        'Extra Virgin Olive Oil',
-        'Lemon Vinaigrette',
-        'Fresh Mint',
-      ],
+      ingredients: isHintProvided ? [this.capitalize(hint!.trim())] : [],
       additives: [],
       allergens: [],
-      vitaminsAndMinerals: [
-        { name: 'Vitamin C', amount: '24mg', dailyValue: '27%' },
-        { name: 'Iron', amount: '3.8mg', dailyValue: '21%' },
-        { name: 'Magnesium', amount: '118mg', dailyValue: '28%' },
-      ],
-      healthierAlternatives: [
-        {
-          foodName: 'Greek Salad with Grilled Chicken',
-          calories: 380,
-          protein: 34,
-          carbs: 12,
-          fat: 16,
-          reason: 'Boosts protein content while reducing overall carbohydrate intake.',
-        },
-      ],
+      vitaminsAndMinerals: [],
+      healthierAlternatives: [],
       isEstimate: true,
       disclaimer:
-        'Nutrition estimates are AI-generated approximations based on visual data. Consult a certified nutritionist or medical professional for specific dietary needs.',
+        'AI food recognition could not confidently identify this image. Please retake photo or verify nutrition manually.',
     };
 
     return defaultMeal;

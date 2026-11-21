@@ -4,6 +4,9 @@ import '../config/app_theme.dart';
 
 /// Reusable NutriScan loading animation widget powered by Lottie.
 /// Uses the custom emerald pulse animation from assets/animations/loading.json.
+///
+/// Automatically crops the 1920x1080 composition's transparent padding so the
+/// visible emerald wave correctly fills the requested logical pixel dimension.
 class NutriLoadingIndicator extends StatelessWidget {
   final double size;
   final String? message;
@@ -12,31 +15,91 @@ class NutriLoadingIndicator extends StatelessWidget {
 
   const NutriLoadingIndicator({
     super.key,
-    this.size = 100,
+    this.size = 110,
     this.message,
     this.messageStyle,
     this.showBackground = false,
   });
 
+  /// Full-screen loading preset (~160–200 logical pixels)
+  const NutriLoadingIndicator.fullScreen({
+    super.key,
+    this.message,
+    this.messageStyle,
+    this.showBackground = false,
+  }) : size = 180;
+
+  /// Card / dialog loading preset (~100–120 logical pixels)
+  const NutriLoadingIndicator.card({
+    super.key,
+    this.message,
+    this.messageStyle,
+    this.showBackground = false,
+  }) : size = 115;
+
+  /// Compact loading preset (~40–56 logical pixels)
+  const NutriLoadingIndicator.compact({
+    super.key,
+    this.message,
+    this.messageStyle,
+    this.showBackground = false,
+  }) : size = 48;
+
   @override
   Widget build(BuildContext context) {
-    Widget content = Lottie.asset(
-      'assets/animations/loading.json',
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      repeat: true,
-      errorBuilder: (context, error, stackTrace) {
-        return SizedBox(
-          width: size * 0.5,
-          height: size * 0.5,
-          child: CircularProgressIndicator(
-            color: AppTheme.primaryGreen,
-            strokeWidth: 3,
+    final bool reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    // The raw loading.json composition is 1920x1080 with the active animated vector
+    // centered in an ~780x440 viewport. Cropping the transparent margins ensures
+    // the visible animation matches the specified logical size accurately.
+    Widget anim;
+    if (reduceMotion) {
+      anim = SizedBox(
+        width: size * 0.45,
+        height: size * 0.45,
+        child: CircularProgressIndicator(
+          color: AppTheme.primaryGreen,
+          strokeWidth: 3,
+        ),
+      );
+    } else {
+      anim = SizedBox(
+        width: size,
+        height: size * 0.56,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 780,
+            height: 440,
+            child: OverflowBox(
+              minWidth: 1920,
+              maxWidth: 1920,
+              minHeight: 1080,
+              maxHeight: 1080,
+              alignment: Alignment.center,
+              child: Lottie.asset(
+                'assets/animations/loading.json',
+                fit: BoxFit.fill,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) {
+                  return SizedBox(
+                    width: size * 0.45,
+                    height: size * 0.45,
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primaryGreen,
+                      strokeWidth: 3,
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    }
+
+    Widget content = anim;
 
     if (message != null && message!.isNotEmpty) {
       content = Column(
@@ -88,10 +151,9 @@ class NutriLoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withValues(alpha: 0.5),
+      color: Colors.black.withValues(alpha: 0.55),
       alignment: Alignment.center,
-      child: NutriLoadingIndicator(
-        size: 130,
+      child: NutriLoadingIndicator.fullScreen(
         message: message,
         showBackground: true,
       ),

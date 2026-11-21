@@ -217,6 +217,8 @@ class AppStateProvider extends ChangeNotifier {
         .join(' ');
   }
 
+  bool _isRestoringBackend = false;
+
   /// Automatically fetch and restore authenticated user data from Supabase via backend API:
   /// - User Profile & Onboarding Data
   /// - Meal History & Food Scans
@@ -228,8 +230,12 @@ class AppStateProvider extends ChangeNotifier {
     String? fallbackName,
     String? photoUrl,
   }) async {
-    _clerkUserId = clerkId;
-    _isClerkLoggedIn = true;
+    if (_isRestoringBackend) return;
+    _isRestoringBackend = true;
+
+    try {
+      _clerkUserId = clerkId;
+      _isClerkLoggedIn = true;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('clerk_user_id', clerkId);
@@ -348,7 +354,7 @@ class AppStateProvider extends ChangeNotifier {
       final backendMeals = await ApiClient().getMeals(limit: 100);
       if (backendMeals != null) {
         _history.clear();
-        await _storageService.clearHistory();
+        final List<LoggedFoodEntry> restoredEntries = [];
 
         for (final m in backendMeals) {
           final mealMap = m as Map<String, dynamic>;
@@ -388,9 +394,11 @@ class AppStateProvider extends ChangeNotifier {
             mealType: mealType,
           );
 
-          _history.add(entry);
-          await _storageService.saveToHistory(entry);
+          restoredEntries.add(entry);
         }
+
+        _history.addAll(restoredEntries);
+        await _storageService.saveAllHistory(_history);
       }
     } catch (e) {
       debugPrint('restoreUserDataFromBackend (meals) error: $e');
@@ -435,9 +443,12 @@ class AppStateProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('restoreUserDataFromBackend (preferences) error: $e');
     }
-
-    notifyListeners();
+  } finally {
+    _isRestoringBackend = false;
   }
+
+  notifyListeners();
+}
 
   Future<void> linkClerkAccount({
     required String? clerkId,
@@ -465,7 +476,7 @@ class AppStateProvider extends ChangeNotifier {
     required String? name,
     String? photoUrl,
   }) async {
-    if (_clerkUserId != clerkId || _history.isEmpty) {
+    if (_clerkUserId != clerkId) {
       await restoreUserDataFromBackend(
         clerkId: clerkId,
         fallbackEmail: email,
@@ -651,10 +662,14 @@ class AppStateProvider extends ChangeNotifier {
           entry.id.startsWith('sample_') ||
           entry.scanData.id.startsWith('scan_sample_'));
 
-      // If user has no local history, fetch their real saved meals from backend
-      if (_history.isEmpty) {
+      // If user is authenticated and has no local history, fetch their real saved meals from backend
+      if (_history.isEmpty &&
+          _isClerkLoggedIn &&
+          ApiClient().sessionToken != null &&
+          ApiClient().sessionToken!.isNotEmpty) {
         final backendMeals = await ApiClient().getMeals(limit: 50);
         if (backendMeals != null && backendMeals.isNotEmpty) {
+          final List<LoggedFoodEntry> backendEntries = [];
           for (final m in backendMeals) {
             final mealMap = m as Map<String, dynamic>;
             final cal = (mealMap['calories'] as num?)?.toDouble() ?? 0;
@@ -689,9 +704,10 @@ class AppStateProvider extends ChangeNotifier {
               mealType: mealType,
             );
 
-            _history.add(entry);
-            await _storageService.saveToHistory(entry);
+            backendEntries.add(entry);
           }
+          _history.addAll(backendEntries);
+          await _storageService.saveAllHistory(_history);
         }
       }
     } catch (e) {

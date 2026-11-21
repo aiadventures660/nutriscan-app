@@ -32,6 +32,7 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
   late ScanMode _currentScanMode;
   final ImagePicker _imagePicker = ImagePicker();
   final AIService _aiService = AIService();
+  int _scanRequestId = 0;
   late AnimationController _laserAnimController;
   late AnimationController _modeSwitchController;
   late Animation<double> _modeSwitchAnim;
@@ -896,7 +897,7 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.lock_outline_rounded, color: AppTheme.primaryGreen, size: 22),
+            Icon(Icons.lock_outline_rounded, color: AppTheme.primaryGreen, size: 22),
             const SizedBox(width: 8),
             Text(
               'Sign In Required',
@@ -982,28 +983,35 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _processImage(File imageFile, String imagePath) async {
+    final requestId = ++_scanRequestId;
+    // Reset stale scan state before processing a new image
+    context.read<AppStateProvider>().clearCurrentScanData();
+
     _showProcessingDialog('Analyzing food macros, NOVA group & additives...');
 
     try {
       final scanData = await _aiService.analyzeFoodImage(imageFile, imagePath);
-      if (mounted) {
-        Navigator.of(context).pop();
-        context.read<AppStateProvider>().setCurrentScanData(scanData);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const ScanResultsScreen()),
-        );
-      }
+      if (!mounted || requestId != _scanRequestId) return;
+
+      Navigator.of(context).pop();
+      context.read<AppStateProvider>().setCurrentScanData(scanData);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const ScanResultsScreen()),
+      );
     } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop();
-        if (e is AuthRequiredException ||
-            e.toString().toLowerCase().contains('sign in') ||
-            e.toString().toLowerCase().contains('unauthorized') ||
-            e.toString().toLowerCase().contains('session')) {
-          _showAuthRequiredDialog();
-        } else {
-          _showErrorDialog('Food analysis failed: $e');
-        }
+      if (!mounted || requestId != _scanRequestId) return;
+
+      Navigator.of(context).pop();
+      if (e is AuthRequiredException ||
+          e.toString().toLowerCase().contains('sign in') ||
+          e.toString().toLowerCase().contains('unauthorized') ||
+          e.toString().toLowerCase().contains('session')) {
+        _showAuthRequiredDialog();
+      } else {
+        _showErrorDialog(
+          'Food analysis failed: $e',
+          onRetry: () => _processImage(imageFile, imagePath),
+        );
       }
     }
   }
@@ -1195,45 +1203,82 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.cardBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const NutriLoadingIndicator(size: 110),
-            const SizedBox(height: 16),
-            Text(
-              'Processing Food Intelligence...',
-              style: TextStyle(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const NutriLoadingIndicator.card(),
+              const SizedBox(height: 14),
+              Text(
+                'Processing Food Intelligence...',
+                style: TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-            ),
-          ],
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _showErrorDialog(String message) {
+  void _showErrorDialog(String message, {VoidCallback? onRetry}) {
     if (mounted) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: AppTheme.cardBackground,
-          title: Text('Notice', style: TextStyle(color: AppTheme.textPrimary)),
-          content:
-              Text(message, style: TextStyle(color: AppTheme.textSecondary)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: AppTheme.primaryGreen, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Scan Notice',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14, height: 1.4),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK', style: TextStyle(color: AppTheme.primaryGreen)),
+              child: Text(
+                onRetry != null ? 'Dismiss' : 'OK',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
             ),
+            if (onRetry != null)
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onRetry();
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Retry Scan'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
           ],
         ),
       );

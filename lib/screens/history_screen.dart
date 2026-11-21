@@ -23,14 +23,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AppStateProvider>().loadHistory();
+      final provider = context.read<AppStateProvider>();
+      if (!provider.isInitialized) {
+        provider.loadHistory();
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppStateProvider>();
-    AppTheme.setDarkMode(appState.isDarkMode);
+    final isDarkMode =
+        context.select<AppStateProvider, bool>((p) => p.isDarkMode);
+    AppTheme.setDarkMode(isDarkMode);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,

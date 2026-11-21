@@ -49,6 +49,18 @@ class StorageService {
     }
   }
 
+  /// Efficiently batch-saves entire meal history list in a single disk write
+  Future<void> saveAllHistory(List<LoggedFoodEntry> entries) async {
+    try {
+      final trimmed = entries.take(100).toList();
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = json.encode(trimmed.map((e) => e.toJson()).toList());
+      await prefs.setString(_historyKey, historyJson);
+    } catch (e) {
+      throw Exception('Failed to save history list: $e');
+    }
+  }
+
   Future<void> removeFromHistory(String id) async {
     try {
       final history = await getHistory();
@@ -100,11 +112,22 @@ class StorageService {
     }
   }
 
-  // Nutrition tips management - now powered by Gemini AI with fallback
+  // Nutrition tips management - uses fast local cache first to prevent UI freezing
   Future<List<NutritionTip>> getNutritionTips({bool forceRefresh = false}) async {
     try {
-      // Clear cache if force refresh requested
-      if (forceRefresh) {
+      // Return cached tips immediately if available and no force refresh requested
+      if (!forceRefresh) {
+        final prefs = await SharedPreferences.getInstance();
+        final tipsJson = prefs.getString(_tipsKey);
+        if (tipsJson != null && tipsJson.isNotEmpty) {
+          try {
+            final List<dynamic> tipsList = json.decode(tipsJson);
+            if (tipsList.isNotEmpty) {
+              return tipsList.map((item) => NutritionTip.fromJson(item)).toList();
+            }
+          } catch (_) {}
+        }
+      } else {
         await forceResetNutritionTips();
       }
       

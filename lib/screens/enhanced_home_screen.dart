@@ -12,6 +12,7 @@ import '../widgets/meal_breakdown_widget.dart';
 import '../widgets/modern_bottom_nav.dart';
 import '../widgets/user_avatar_widget.dart';
 import '../widgets/animated_components.dart';
+import '../widgets/nutri_loading_indicator.dart';
 import '../models/food_models.dart';
 import '../services/health_sync_service.dart';
 import '../services/ai_service.dart';
@@ -56,8 +57,9 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppStateProvider>();
-    AppTheme.setDarkMode(appState.isDarkMode);
+    final isDarkMode =
+        context.select<AppStateProvider, bool>((p) => p.isDarkMode);
+    AppTheme.setDarkMode(isDarkMode);
 
     return Scaffold(
       extendBody: true,
@@ -1238,26 +1240,17 @@ class _DashboardTabState extends State<_DashboardTab>
         const SizedBox(height: 12),
         if (tips.isEmpty)
           GlassCard(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
             child: Center(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.lightbulb_outline_rounded,
-                    color: AppTheme.primaryGreen,
-                    size: 32,
+                  const NutriLoadingIndicator.card(
+                    message: 'Loading daily AI recommendations...',
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Loading daily AI recommendations...',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   GradientButton(
-                    text: 'Load Tips',
+                    text: 'Refresh Recommendations',
                     onPressed: () => provider.loadNutritionTips(),
                   ),
                 ],

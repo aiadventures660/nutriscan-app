@@ -17,8 +17,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppStateProvider>();
-    AppTheme.setDarkMode(appState.isDarkMode);
+    final isDarkMode =
+        context.select<AppStateProvider, bool>((p) => p.isDarkMode);
+    AppTheme.setDarkMode(isDarkMode);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,

@@ -78,7 +78,17 @@ class AIService {
       _log('🚀 Attempting backend AI Vision food analysis...');
       final backendResult = await ApiClient().analyzeFoodImage(imageFile);
       if (backendResult != null) {
-        _log('✅ Received structured food analysis from real backend API');
+        final foodName = backendResult['foodName'] as String?;
+        // Defense-in-depth: Reject stale/legacy backend fallback if the old Render deployment returned it
+        if (foodName == 'Mediterranean Quinoa Salad' &&
+            backendResult['calories'] == 420 &&
+            backendResult['unitWeightGrams'] == 320) {
+          _log('⚠️ Stale backend mock fallback detected ("Mediterranean Quinoa Salad"). Rejecting fake food.');
+          throw Exception(
+            'Could not clearly recognize food in this image. Please retake a clear, well-lit photo and tap Retry.',
+          );
+        }
+        _log('✅ Received structured food analysis from real backend API: $foodName');
         return _mapBackendResponseToScanData(backendResult, imagePath);
       }
     } on AuthRequiredException {
@@ -195,8 +205,10 @@ class AIService {
       }
 
       if (response == null || response.text == null || response.text!.trim().isEmpty) {
-        _log('⚡ All cloud Gemini models unavailable or timed out ($lastError). Activating smart local fallback...');
-        return _generateSmartLocalFallback(imagePath, imageFile);
+        _log('⚡ All cloud Gemini models unavailable or timed out ($lastError).');
+        throw Exception(
+          'AI Vision could not recognize food in this image. Please check camera focus, lighting, and try again.',
+        );
       }
 
       final responseText = response.text!.trim();
@@ -236,37 +248,10 @@ class AIService {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
       );
     } catch (e) {
-      _log('❌ Error during AI analysis ($e). Seamlessly activating resilient fallback...');
-      return _generateSmartLocalFallback(imagePath, imageFile);
+      _log('❌ Error during AI analysis ($e).');
+      if (e is AuthRequiredException) rethrow;
+      throw Exception('Food image analysis failed: ${ApiConfig.sanitizeLog(e.toString())}');
     }
-  }
-
-  /// Resilient smart local fallback when all cloud models are unreachable or offline
-  ScanData _generateSmartLocalFallback(String imagePath, File imageFile) {
-    return ScanData(
-      foodName: 'Nutrient-Dense Meal',
-      nutritionInfo: 'Calories: 460 kcal, Protein: 26g, Carbohydrates: 48g, Fat: 14g, Fiber: 6g, Sugar: 5g, Sodium: 320mg',
-      singleItemNutrition: 'Calories: 460 kcal, Protein: 26g, Carbohydrates: 48g, Fat: 14g, Fiber: 6g, Sugar: 5g, Sodium: 320mg',
-      totalDetectedNutrition: 'Calories: 460 kcal, Protein: 26g, Carbohydrates: 48g, Fat: 14g, Fiber: 6g, Sugar: 5g, Sodium: 320mg',
-      itemCount: 1,
-      unitName: 'portion',
-      servingSize: '1 balanced plate (~350g)',
-      unitWeightGrams: 350.0,
-      healthScore: '9/10 - Whole Foods Profile',
-      recommendations: 'Wholesome, balanced nutritional profile rich in complete protein, fiber, and clean micronutrients.',
-      vitaminsAndMinerals: [
-        VitaminMineral(name: 'Vitamin C', amount: '22mg', dailyValue: '25%'),
-        VitaminMineral(name: 'Iron', amount: '3.1mg', dailyValue: '17%'),
-        VitaminMineral(name: 'Potassium', amount: '410mg', dailyValue: '12%'),
-        VitaminMineral(name: 'Calcium', amount: '120mg', dailyValue: '12%'),
-      ],
-      novaGroup: 1, // Unprocessed / minimally processed whole food
-      additives: [],
-      allergens: [],
-      imagePath: imagePath,
-      timestamp: DateTime.now(),
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-    );
   }
 
   /// Helper to safely query Gemini for text tasks across fallback models
@@ -691,9 +676,11 @@ Respond with JSON:
       recommendations: data['recommendations'] ??
           'Estimated nutritional facts based on AI vision analysis.',
       vitaminsAndMinerals: vitList,
-      imagePath: (data['imageUrl'] as String?)?.isNotEmpty == true
-          ? (data['imageUrl'] as String)
-          : imagePath,
+      imagePath: imagePath.isNotEmpty && File(imagePath).existsSync()
+          ? imagePath
+          : ((data['imageUrl'] as String?)?.isNotEmpty == true
+              ? (data['imageUrl'] as String)
+              : imagePath),
       novaGroup: (data['novaGroup'] as num?)?.toInt() ?? 1,
       additives: additivesList,
       allergens: allergensList,
