@@ -21,6 +21,14 @@ class ClerkAuthScreen extends StatefulWidget {
     this.isRedirectAfterLogout = false,
   });
 
+  /// Tracks whether ClerkAuthScreen is currently mounted and active.
+  /// Used by global ClerkErrorListener to prevent displaying duplicate SnackBars.
+  static bool isScreenActive = false;
+
+  /// Public error parser used across the app
+  static String parseClerkError(dynamic error) =>
+      _ClerkAuthScreenState.parseClerkError(error);
+
   @override
   State<ClerkAuthScreen> createState() => _ClerkAuthScreenState();
 }
@@ -63,6 +71,7 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
   @override
   void initState() {
     super.initState();
+    ClerkAuthScreen.isScreenActive = true;
 
     // 1. Entrance animation
     _entranceAnimController = AnimationController(
@@ -120,6 +129,7 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
 
   @override
   void dispose() {
+    ClerkAuthScreen.isScreenActive = false;
     _entranceAnimController.dispose();
     _arrowAnimController.dispose();
     _emailController.dispose();
@@ -147,34 +157,45 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
     }
   }
 
-  static String _parseClerkError(dynamic error) {
-    if (error is clerk.ApiResponse) {
-      return error.errorCollection.errorMessage;
-    }
-    try {
-      final msg = (error as dynamic).errorMessage;
-      if (msg is String && msg.isNotEmpty) return msg;
-    } catch (_) {}
-    try {
-      final msg = (error as dynamic).fullMessage;
-      if (msg is String && msg.isNotEmpty) return msg;
-    } catch (_) {}
-    if (error is clerk.ClerkError) {
-      if (error.argument != null && error.argument!.trim().isNotEmpty) {
-        return error.argument!;
-      }
-      if (error.errors?.errors?.isNotEmpty == true) {
-        final first = error.errors!.errors!.first;
-        if (first.message.isNotEmpty) return first.message;
-      }
-      return error
-          .toString()
+  static String _parseClerkError(dynamic error) => parseClerkError(error);
+
+  static String parseClerkError(dynamic error) {
+    String clean(String str) {
+      final sanitized = str
           .replaceAll(' (ERROR RECEIVED FROM SERVER)', '')
           .replaceAll(' (EXTERNAL ERROR)', '')
           .replaceAll('{arg}', '')
           .trim();
+      if (sanitized.contains('older sign in') ||
+          sanitized.contains('cannot_be_updated') ||
+          sanitized.contains('already_completed')) {
+        return 'Session expired. Please sign in again.';
+      }
+      return sanitized;
     }
-    return error.toString().replaceAll('Exception: ', '').trim();
+
+    if (error is clerk.ApiResponse) {
+      return clean(error.errorCollection.errorMessage);
+    }
+    try {
+      final msg = (error as dynamic).errorMessage;
+      if (msg is String && msg.isNotEmpty) return clean(msg);
+    } catch (_) {}
+    try {
+      final msg = (error as dynamic).fullMessage;
+      if (msg is String && msg.isNotEmpty) return clean(msg);
+    } catch (_) {}
+    if (error is clerk.ClerkError) {
+      if (error.argument != null && error.argument!.trim().isNotEmpty) {
+        return clean(error.argument!);
+      }
+      if (error.errors?.errors?.isNotEmpty == true) {
+        final first = error.errors!.errors!.first;
+        if (first.message.isNotEmpty) return clean(first.message);
+      }
+      return clean(error.toString());
+    }
+    return clean(error.toString().replaceAll('Exception: ', ''));
   }
 
   // ===========================================================================
@@ -322,11 +343,75 @@ class _ClerkAuthScreenState extends State<ClerkAuthScreen>
         return;
       }
 
-      await authState.attemptSignIn(
-        strategy: clerk.Strategy.password,
-        identifier: email,
-        password: password,
-      );
+      // Handle password authentication with proactive and reactive stale-sign-in recovery
+      bool freshSignInUsed = false;
+      final existingSignIn = authState.client.signIn;
+      if (existingSignIn != null) {
+        if (existingSignIn.status != clerk.Status.complete &&
+            existingSignIn.firstFactorVerification?.status != null) {
+          debugPrint('🔄 Stale factor on client.signIn detected. Starting fresh sign-in...');
+          final freshRes = await authState.fetchApiResponse(
+            '/client/sign_ins',
+            params: {
+              'identifier': email,
+              'password': password,
+            },
+          );
+          if (freshRes.isError) {
+            final err = parseClerkError(freshRes.errorCollection);
+            if (freshRes.errorCollection.errors?.any((e) => e.code == 'form_identifier_not_found') == true) {
+              _showError('No account found for this email. Switched to Sign Up to create your account.');
+              setState(() => _isSignUpMode = true);
+            } else if (freshRes.errorCollection.errors?.any((e) => e.code == 'form_password_incorrect') == true) {
+              _showError('Incorrect password. Clear password to sign in via Email OTP, or tap Forgot Password.');
+            } else {
+              _showError(err);
+            }
+            return;
+          }
+          authState.update();
+          freshSignInUsed = true;
+        }
+      }
+
+      if (!freshSignInUsed) {
+        try {
+          await authState.attemptSignIn(
+            strategy: clerk.Strategy.password,
+            identifier: email,
+            password: password,
+          );
+        } catch (e) {
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('older sign in') ||
+              errStr.contains('cannot_be_updated') ||
+              errStr.contains('already_completed')) {
+            debugPrint('🔄 Stale sign-in error ($e). Retrying with fresh sign-in...');
+            final freshRes = await authState.fetchApiResponse(
+              '/client/sign_ins',
+              params: {
+                'identifier': email,
+                'password': password,
+              },
+            );
+            if (freshRes.isError) {
+              final err = parseClerkError(freshRes.errorCollection);
+              if (freshRes.errorCollection.errors?.any((e) => e.code == 'form_identifier_not_found') == true) {
+                _showError('No account found for this email. Switched to Sign Up to create your account.');
+                setState(() => _isSignUpMode = true);
+              } else if (freshRes.errorCollection.errors?.any((e) => e.code == 'form_password_incorrect') == true) {
+                _showError('Incorrect password. Clear password to sign in via Email OTP, or tap Forgot Password.');
+              } else {
+                _showError(err);
+              }
+              return;
+            }
+            authState.update();
+          } else {
+            rethrow;
+          }
+        }
+      }
 
       if (authState.isSignedIn) {
         await _handleAuthSuccess(authState);
@@ -1542,6 +1627,7 @@ class _EmailVerificationSheetState extends State<_EmailVerificationSheet> {
   @override
   void initState() {
     super.initState();
+    ClerkAuthScreen.isScreenActive = true;
     _startCooldownTimer();
   }
 

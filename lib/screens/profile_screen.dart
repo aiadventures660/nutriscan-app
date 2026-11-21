@@ -10,7 +10,6 @@ import '../services/storage_service.dart';
 import '../widgets/user_avatar_widget.dart';
 import '../services/api_client.dart';
 import 'clerk_auth_screen.dart';
-import 'onboarding_screen.dart';
 import 'user_setup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -1186,17 +1185,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: AppTheme.primaryGreen,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (context) => const UserSetupScreen(isFirstTime: false)),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // Tutorial Button (Always Available)
-              _buildActionRow(
-                title: 'Onboarding Tutorial',
-                icon: Icons.school_rounded,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const OnboardingScreen()),
                 ),
               ),
 

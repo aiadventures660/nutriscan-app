@@ -78,11 +78,80 @@ class FoodScannerApp extends StatelessWidget {
             darkTheme: AppTheme.darkTheme,
             themeMode: appState.themeMode,
             debugShowCheckedModeBanner: false,
-            builder: ClerkAuth.materialAppBuilder(
-              config: ClerkAuthConfig(
-                publishableKey: ApiConfig.clerkPublishableKey,
-              ),
-            ),
+            builder: (context, child) {
+              return ClerkAuth(
+                config: ClerkAuthConfig(
+                  publishableKey: ApiConfig.clerkPublishableKey,
+                ),
+                child: ClerkErrorListener(
+                  handler: (context, error) {
+                    // Suppress duplicate SnackBar on ClerkAuthScreen where inline error banner is displayed
+                    if (ClerkAuthScreen.isScreenActive) {
+                      return;
+                    }
+
+                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    if (messenger == null) return;
+
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+                    final cleanMessage = ClerkAuthScreen.parseClerkError(error);
+
+                    if (cleanMessage.isEmpty) return;
+
+                    messenger.hideCurrentSnackBar();
+                    messenger.showSnackBar(
+                      SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        elevation: 2,
+                        backgroundColor: isDark
+                            ? const Color(0xFF2C1518)
+                            : const Color(0xFFFEF2F2),
+                        margin: EdgeInsets.only(
+                          left: 16,
+                          right: 16,
+                          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: isDark
+                                ? AppTheme.error.withValues(alpha: 0.4)
+                                : AppTheme.error.withValues(alpha: 0.25),
+                            width: 1.2,
+                          ),
+                        ),
+                        content: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              color: AppTheme.error,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                cleanMessage,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? const Color(0xFFFECACA)
+                                      : const Color(0xFF991B1B),
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  },
+                  child: child!,
+                ),
+              );
+            },
             home: AuthGate(
               hasSeenOnboarding: hasSeenOnboarding,
               hasCompletedProfile: hasCompletedProfile,
