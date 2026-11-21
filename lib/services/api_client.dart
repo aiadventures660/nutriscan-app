@@ -8,6 +8,14 @@ import '../config/api_config.dart';
 
 typedef TokenProvider = Future<String?> Function();
 
+/// Thrown when an endpoint requires an authenticated Clerk session
+class AuthRequiredException implements Exception {
+  final String message;
+  const AuthRequiredException(this.message);
+  @override
+  String toString() => message;
+}
+
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
@@ -184,6 +192,10 @@ class ApiClient {
 
       if (headers.containsKey('Authorization')) {
         request.headers['Authorization'] = headers['Authorization']!;
+      } else {
+        throw const AuthRequiredException(
+          'Please sign in or create an account to use AI Food Scanning.',
+        );
       }
 
       if (foodHint != null && foodHint.isNotEmpty) {
@@ -207,13 +219,25 @@ class ApiClient {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = json.decode(response.body);
         return decoded['data'] as Map<String, dynamic>?;
+      } else if (response.statusCode == 401) {
+        debugPrint('ApiClient analyzeFoodImage error: 401 - ${response.body}');
+        throw const AuthRequiredException(
+          'Your session has expired or authentication is required. Please sign in to use AI Food Scanning.',
+        );
       } else {
         debugPrint('ApiClient analyzeFoodImage error: ${response.statusCode} - ${response.body}');
-        return null;
+        String? serverMsg;
+        try {
+          final errBody = json.decode(response.body);
+          serverMsg = errBody['message'] ?? errBody['error'];
+        } catch (_) {}
+        throw Exception(serverMsg ?? 'Backend analysis failed (status ${response.statusCode})');
       }
+    } on AuthRequiredException {
+      rethrow;
     } catch (e) {
       debugPrint('ApiClient analyzeFoodImage exception: $e');
-      return null;
+      rethrow;
     }
   }
 

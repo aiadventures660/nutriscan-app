@@ -81,12 +81,29 @@ class AIService {
         _log('✅ Received structured food analysis from real backend API');
         return _mapBackendResponseToScanData(backendResult, imagePath);
       }
+    } on AuthRequiredException {
+      // Propagate authentication requirement directly to the UI
+      rethrow;
     } catch (e) {
       _log('⚠️ Backend API request failed: $e, continuing to local fallback');
+      if (e is AuthRequiredException ||
+          e.toString().contains('sign in') ||
+          e.toString().contains('session')) {
+        rethrow;
+      }
     }
 
     if (!_isApiConfigured) {
-      throw Exception('Gemini AI API key not configured. Please provide a valid API key.');
+      // Check if user is not signed in to provide the appropriate guidance
+      final hasToken = ApiClient().sessionToken != null && ApiClient().sessionToken!.isNotEmpty;
+      if (!hasToken) {
+        throw const AuthRequiredException(
+          'Please sign in or create an account to use AI Food Scanning.',
+        );
+      }
+      throw Exception(
+        'AI Food Scanning is currently unavailable. Please check your internet connection and try again.',
+      );
     }
 
     try {

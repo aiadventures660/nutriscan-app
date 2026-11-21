@@ -9,6 +9,8 @@ import '../services/ai_service.dart';
 import '../config/app_theme.dart';
 import '../widgets/animated_components.dart';
 import '../widgets/nutri_loading_indicator.dart';
+import '../services/api_client.dart';
+import 'clerk_auth_screen.dart';
 import 'scan_results_screen.dart';
 
 enum ScanMode { vision, barcode, voice }
@@ -879,7 +881,71 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
   // ─────────────────────────────────────────────
   // ACTIONS & DIALOGS
   // ─────────────────────────────────────────────
+  bool get _isAuthenticated {
+    final provider = context.read<AppStateProvider>();
+    final hasToken = ApiClient().sessionToken != null && ApiClient().sessionToken!.isNotEmpty;
+    return provider.isClerkLoggedIn || hasToken;
+  }
+
+  void _showAuthRequiredDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_outline_rounded, color: AppTheme.primaryGreen, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'Sign In Required',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'AI Food Scanning requires a free NutriScan account to calculate nutritional macros and save meals to your history.',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ClerkAuthScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Sign In / Sign Up'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _capturePhoto() async {
+    if (!_isAuthenticated) {
+      _showAuthRequiredDialog();
+      return;
+    }
+
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
     }
@@ -894,6 +960,11 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _pickFromGallery() async {
+    if (!_isAuthenticated) {
+      _showAuthRequiredDialog();
+      return;
+    }
+
     try {
       final XFile? photo = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -925,7 +996,14 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        _showErrorDialog('Food analysis failed: $e');
+        if (e is AuthRequiredException ||
+            e.toString().toLowerCase().contains('sign in') ||
+            e.toString().toLowerCase().contains('unauthorized') ||
+            e.toString().toLowerCase().contains('session')) {
+          _showAuthRequiredDialog();
+        } else {
+          _showErrorDialog('Food analysis failed: $e');
+        }
       }
     }
   }
