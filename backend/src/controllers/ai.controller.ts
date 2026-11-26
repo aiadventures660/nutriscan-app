@@ -12,6 +12,12 @@ const analyzeTextSchema = z.object({
     .max(500, 'Query exceeds maximum limit of 500 characters'),
 });
 
+const mealPlanSchema = z.object({
+  targetCalories: z.number().positive().max(10000),
+  targetProtein: z.number().nonnegative().max(1000),
+  dietaryStyle: z.string().trim().min(1).max(100),
+});
+
 function isValidImageFile(buffer: Buffer): boolean {
   if (!buffer || buffer.length < 12) return false;
   // JPEG: FF D8 FF
@@ -90,6 +96,19 @@ export class AIController {
       },
       message: 'Food image analyzed successfully. Values are AI-generated estimates.',
     });
+  }
+
+  async generateMealPlan(req: AuthenticatedRequest, res: Response): Promise<void> {
+    const input = mealPlanSchema.parse(req.body);
+    const meals = await aiService.generateMealPlan(input);
+    if (meals === null) {
+      res.status(503).json({
+        success: false,
+        message: 'AI meal planning is temporarily unavailable. Please try again.',
+      });
+      return;
+    }
+    res.json({ success: true, data: { meals } });
   }
 
   async analyzeText(req: AuthenticatedRequest, res: Response): Promise<void> {

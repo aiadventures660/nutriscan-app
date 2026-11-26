@@ -17,4 +17,8 @@ router.post('/analyze-text', (req, res) =>
   aiController.analyzeText(req, res)
 );
 
+router.post('/meal-plan', (req, res, next) =>
+  aiController.generateMealPlan(req, res).catch(next)
+);
+
 export default router;
